@@ -1,42 +1,32 @@
 name: Hy2_Ultra_Scanner
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # Запуск каждые 6 часов
-  workflow_dispatch: # Возможность запустить руками
+    - cron: '0 */6 * * *'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          token: ${{ secrets.WORKFLOW_TOKEN }}
 
-      - name: Install dependencies
-        run: pip install requests
-
-      - name: Run IP Scanner
-        env:
-          CF_API_KEY: ${{ secrets.CF_API_KEY }}
-          CF_EMAIL: ${{ secrets.CF_EMAIL }}
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      - name: Collect Hy2
         run: |
-          python -c "
-          import os
-          # Тут будет логика перебора IP и генерация ссылки
-          print('Scanning for clean Cloudflare IP...')
-          with open('sub.txt', 'w') as f:
-              f.write('hysteria2://8e5f8f8b-70c1-4581-987d-411a54529f7d@162.159.135.42:443?sni=noisy-bird-f8be.vehesslav.workers.dev&insecure=1#Stella_Live_Update')
-          "
+          mkdir -p providers
+          # Качаем из Goida и RJSXRD, выцепляем только hy2
+          curl -L -s https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/main/all.txt | grep "hysteria2://" > providers/hy2_list.txt || echo "" > providers/hy2_list.txt
+          curl -L -s https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/all.txt | grep "hysteria2://" >> providers/hy2_list.txt || echo "" >> providers/hy2_list.txt
+          # Убираем дубли и пустые строки
+          sort -u providers/hy2_list.txt -o providers/hy2_list.txt
+          sed -i '/^$/d' providers/hy2_list.txt
 
-      - name: Commit and Push
+      - name: Push results
         run: |
           git config --global user.name "Catsss3"
           git config --global user.email "vehesslav@gmail.com"
-          git add sub.txt
-          git commit -m "Update sub.txt" || exit 0
-          git push
+          git add providers/hy2_list.txt
+          git commit -m "Update Hy2 providers via Action" || echo "No changes to commit"
+          git push origin main
