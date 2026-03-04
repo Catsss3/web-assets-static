@@ -1,0 +1,3 @@
+https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/main/hysteria2.txt
+https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/default/hysteria2.txt
+https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/bypass/hysteria2.txt
