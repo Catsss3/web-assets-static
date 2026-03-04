@@ -14,17 +14,21 @@ jobs:
       - name: Grab and Filter
         run: |
           mkdir -p providers
-          > providers/hy2_list.txt
+          # Качаем всё в один файл
           while IFS= read -r url; do
             echo "Checking $url..."
             curl -L -s -H "User-Agent: Mozilla/5.0" "$url" >> temp_raw.txt
+            echo "" >> temp_raw.txt
           done < sources/list.txt
-          grep -o "hysteria2://[^#]*" temp_raw.txt | sort -u > providers/hy2_list.txt
-          echo "Found $(wc -l < providers/hy2_list.txt) proxies"
+          
+          # Ищем hysteria2 (ИГНОРИРУЯ регистр -i) и берем всю строку целиком
+          grep -i "hysteria2://" temp_raw.txt | sort -u > providers/hy2_list.txt
+          
+          echo "Found $(wc -l < providers/hy2_list.txt) lines"
       - name: Push to Repo
         run: |
           git config --global user.name "Catsss3"
           git config --global user.email "vehesslav@gmail.com"
-          git add providers/hy2_list.txt sources/list.txt
-          git commit -m "Aggressive update via GitHub Action" || exit 0
+          git add providers/hy2_list.txt
+          git commit -m "Fixed grep: found $(wc -l < providers/hy2_list.txt) servers" || exit 0
           git push origin main
