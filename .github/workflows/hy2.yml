@@ -18,17 +18,18 @@ jobs:
           mkdir -p providers
           > raw_data.txt
           
-          echo "📡 Download Hy2..."
-          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2" >> raw_data.txt || echo "Skip hy2"
+          # ТЕПЕРЬ ИСПОЛЬЗУЕМ ВЕТКУ 'mirror'
+          echo "📡 Download Hy2 from mirror branch..."
+          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/mirror/githubmirror/split-by-protocols/hy2" >> raw_data.txt || echo "Skip hy2"
           
-          echo "📡 Download Hy2-Secure..."
-          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2-secure" >> raw_data.txt || echo "Skip secure"
+          echo "📡 Download Hy2-Secure from mirror branch..."
+          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/mirror/githubmirror/split-by-protocols/hy2-secure" >> raw_data.txt || echo "Skip secure"
 
           if [ -s raw_data.txt ]; then
             tr -d '\r' < raw_data.txt | grep -i "hysteria2://" | sort -u > providers/hy2_list.txt
-            echo "✅ Total found: $(wc -l < providers/hy2_list.txt)"
+            echo "✅ SUCCESS! Found $(wc -l < providers/hy2_list.txt) servers."
           else
-            echo "❌ All sources failed"
+            echo "❌ STILL EMPTY! Check the URLs manually."
             exit 1
           fi
 
@@ -37,9 +38,5 @@ jobs:
           git config --global user.name "Catsss3"
           git config --global user.email "vehesslav@gmail.com"
           git add providers/hy2_list.txt
-          if git diff --staged --quiet; then
-            echo "ℹ️ No changes"
-          else
-            git commit -m "Auto-update Hy2: $(date)"
-            git push origin main
-          fi
+          git commit -m "Auto-update Hy2 (mirror branch): $(date)" || echo "No changes"
+          git push origin main
