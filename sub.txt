@@ -1,1 +1,0 @@
-hysteria2://8e5f8f8b-70c1-4581-987d-411a54529f7d@162.159.135.42:443?sni=noisy-bird-f8be.vehesslav.workers.dev&insecure=1#Stella_Live_Update
