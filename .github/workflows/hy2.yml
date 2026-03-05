@@ -8,6 +8,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # -------------------------------------------------
+    # Указываем Bash как оболочку для всех шагов job
+    # -------------------------------------------------
+    defaults:
+      run:
+        shell: bash
+
     steps:
       # -------------------------------------------------
       # 1️⃣ Checkout репозитория
@@ -28,7 +35,6 @@ jobs:
       # 3️⃣ Сборка списка Hysteria2
       # -------------------------------------------------
       - name: Build Hy2 list
-        shell: bash                     # <‑‑ гарантируем Bash
         run: |
           set -euo pipefail
 
@@ -71,4 +77,3 @@ jobs:
           git add providers/hy2_list.txt
           git commit -m "Update Hy2 providers via Action" || echo "No changes"
           git push origin main
-          
