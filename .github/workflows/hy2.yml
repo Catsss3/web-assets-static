@@ -16,18 +16,17 @@ jobs:
       - name: Collect
         run: |
           mkdir -p providers
-          # Убрали 'set -e', чтобы не падал при ошибке одного файла
           > raw_data.txt
           
-          echo "📡 Download 1..."
-          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2.txt" >> raw_data.txt || echo "Skip 1"
+          echo "📡 Download Hy2..."
+          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2" >> raw_data.txt || echo "Skip hy2"
           
-          echo "📡 Download 2..."
-          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2-secure.txt" >> raw_data.txt || echo "Skip 2"
+          echo "📡 Download Hy2-Secure..."
+          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2-secure" >> raw_data.txt || echo "Skip secure"
 
           if [ -s raw_data.txt ]; then
             tr -d '\r' < raw_data.txt | grep -i "hysteria2://" | sort -u > providers/hy2_list.txt
-            echo "✅ Total: $(wc -l < providers/hy2_list.txt)"
+            echo "✅ Total found: $(wc -l < providers/hy2_list.txt)"
           else
             echo "❌ All sources failed"
             exit 1
@@ -38,5 +37,9 @@ jobs:
           git config --global user.name "Catsss3"
           git config --global user.email "vehesslav@gmail.com"
           git add providers/hy2_list.txt
-          git commit -m "Update Hy2: $(date)" || echo "No changes"
-          git push origin main
+          if git diff --staged --quiet; then
+            echo "ℹ️ No changes"
+          else
+            git commit -m "Auto-update Hy2: $(date)"
+            git push origin main
+          fi
