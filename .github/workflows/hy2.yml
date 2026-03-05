@@ -3,7 +3,7 @@ name: Hy2 Ultra Scanner
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'   # каждые 6 часов
+    - cron: '0 */6 * * *'   # каждые 6 часов
 
 jobs:
   build:
@@ -17,15 +17,26 @@ jobs:
       - name: Build Hy2 list
         run: |
           mkdir -p providers
-          # ---- Goida (опционально) ----
-          curl -f -s -L https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/main/all.txt |
-            grep -i "hysteria2://" >> providers/hy2_list.txt || echo "Goida missing"
-          # ---- rjsxrd split-by-protocols ----
-          for f in hy2.txt hy2_*.txt; do
-            curl -f -s -L https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/$f |
-              grep -i "hysteria2://" >> providers/hy2_list.txt || echo "$f missing"
-          done
-          # ---- очистка ----
+
+          BASE_URL="https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols"
+
+          # hy2.txt
+          if curl -f -s -L "${BASE_URL}/hy2.txt" > /dev/null; then
+            curl -f -s -L "${BASE_URL}/hy2.txt" |
+              grep -i "hysteria2://" >> providers/hy2_list.txt
+          else
+            echo "⚠️ hy2.txt missing"
+          fi
+
+          # hy2-secure.txt
+          if curl -f -s -L "${BASE_URL}/hy2-secure.txt" > /dev/null; then
+            curl -f -s -L "${BASE_URL}/hy2-secure.txt" |
+              grep -i "hysteria2://" >> providers/hy2_list.txt
+          else
+            echo "⚠️ hy2-secure.txt missing"
+          fi
+
+          # Убираем дубли и пустые строки
           sort -u providers/hy2_list.txt -o providers/hy2_list.txt
           sed -i '/^$/d' providers/hy2_list.txt
 
@@ -36,4 +47,3 @@ jobs:
           git add providers/hy2_list.txt
           git commit -m "Update Hy2 providers via Action" || echo "No changes"
           git push origin main
-          
