@@ -1,0 +1,39 @@
+name: Hy2 Ultra Scanner
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'   # каждые 6 часов
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.WORKFLOW_TOKEN }}
+
+      - name: Build Hy2 list
+        run: |
+          mkdir -p providers
+          # ---- Goida (опционально) ----
+          curl -f -s -L https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/main/all.txt |
+            grep -i "hysteria2://" >> providers/hy2_list.txt || echo "Goida missing"
+          # ---- rjsxrd split-by-protocols ----
+          for f in hy2.txt hy2_*.txt; do
+            curl -f -s -L https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/$f |
+              grep -i "hysteria2://" >> providers/hy2_list.txt || echo "$f missing"
+          done
+          # ---- очистка ----
+          sort -u providers/hy2_list.txt -o providers/hy2_list.txt
+          sed -i '/^$/d' providers/hy2_list.txt
+
+      - name: Commit and push
+        run: |
+          git config --global user.name "Catsss3"
+          git config --global user.email "vehesslav@gmail.com"
+          git add providers/hy2_list.txt
+          git commit -m "Update Hy2 providers via Action" || echo "No changes"
+          git push origin main
+          
