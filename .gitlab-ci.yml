@@ -1,0 +1,19 @@
+stages:
+  - sync_to_github
+push_to_github:
+  stage: sync_to_github
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache git bash
+    - git config --global user.name "Catsss3"
+    - git config --global user.email "vehesslav@gmail.com"
+  script:
+    - git clone --depth 1 "https://x-access-token:${WORKFLOW_TOKEN}@github.com/Catsss3/web-assets-static.git" github_repo
+    - mkdir -p github_repo/.github/workflows
+    - cp .github/workflows/hy2.yml github_repo/.github/workflows/hy2.yml
+    - cd github_repo
+    - git add .github/workflows/hy2.yml
+    - git commit -m "Sync Workflow from GitLab CI" || echo "No changes"
+    - git push origin main
+  only:
+    - main

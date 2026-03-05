@@ -1,79 +1,35 @@
 name: Hy2 Ultra Scanner
-
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'   # каждые 6 ч
-
+    - cron: '0 */6 * * *'
 jobs:
   build:
     runs-on: ubuntu-latest
-    # -------------------------------------------------
-    # Указываем Bash как оболочку для всех шагов job
-    # -------------------------------------------------
-    defaults:
-      run:
-        shell: bash
-
     steps:
-      # -------------------------------------------------
-      # 1️⃣ Checkout репозитория
-      # -------------------------------------------------
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
         with:
           token: ${{ secrets.WORKFLOW_TOKEN }}
-          fetch-depth: 1
-
-      # -------------------------------------------------
-      # 2️⃣ Подготовка директории вывода
-      # -------------------------------------------------
-      - name: Prepare output directory
-        run: mkdir -p "${{ github.workspace }}/providers"
-
-      # -------------------------------------------------
-      # 3️⃣ Сборка списка Hysteria2
-      # -------------------------------------------------
       - name: Build Hy2 list
         run: |
           set -euo pipefail
-
-          export BASE_URL="https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols"
-          OUT="${{ github.workspace }}/providers/hy2_list.txt"
-
-          # Очистить/создать файл
-          : > "$OUT"
-
-          # ---------- hy2.txt ----------
-          if curl -f -s -L "${BASE_URL}/hy2.txt" > /dev/null; then
-            curl -f -s -L "${BASE_URL}/hy2.txt" |
-              grep -i "hysteria2://" >> "$OUT"
-          else
-            echo "⚠️ hy2.txt missing"
-          fi
-
-          # ---------- hy2-secure.txt ----------
-          if curl -f -s -L "${BASE_URL}/hy2-secure.txt" > /dev/null; then
-            curl -f -s -L "${BASE_URL}/hy2-secure.txt" |
-              grep -i "hysteria2://" >> "$OUT"
-          else
-            echo "⚠️ hy2-secure.txt missing"
-          fi
-
-          # Убираем дубли и пустые строки
-          sort -u "$OUT" -o "$OUT"
-          sed -i '/^$/d' "$OUT"
-
-          echo "✅ Готово. Найдено $(wc -l < "$OUT") строк."
-          head -n 10 "$OUT"
-
-      # -------------------------------------------------
-      # 4️⃣ Коммит и пуш результата
-      # -------------------------------------------------
-      - name: Commit and push
+          mkdir -p providers
+          SOURCES=(
+            "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2.txt"
+            "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2-secure.txt"
+          )
+          > temp_raw.txt
+          for url in "${SOURCES[@]}"; do
+            echo "Grabbing $url..."
+            curl -f -s -L -A "Mozilla/5.0" "$url" >> temp_raw.txt || echo "Failed $url"
+            echo "" >> temp_raw.txt
+          done
+          grep -i "hysteria2://" temp_raw.txt | sort -u | sed '/^$/d' > providers/hy2_list.txt
+          echo "✅ Done! Found $(wc -l < providers/hy2_list.txt) proxies."
+      - name: Push to Repo
         run: |
           git config --global user.name "Catsss3"
           git config --global user.email "vehesslav@gmail.com"
           git add providers/hy2_list.txt
-          git commit -m "Update Hy2 providers via Action" || echo "No changes"
+          git commit -m "Auto-update Hy2 list: $(date +'%d-%m-%Y %H:%M')" || echo "No changes"
           git push origin main
