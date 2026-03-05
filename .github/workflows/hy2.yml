@@ -28,7 +28,7 @@ jobs:
       # 3️⃣ Сборка списка Hysteria2
       # -------------------------------------------------
       - name: Build Hy2 list
-        shell: bash          # <‑‑ явно указываем bash
+        shell: bash                     # <‑‑ гарантируем Bash
         run: |
           set -euo pipefail
 
