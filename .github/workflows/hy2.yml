@@ -3,33 +3,40 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 */6 * * *'
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
         with:
           token: ${{ secrets.WORKFLOW_TOKEN }}
-      - name: Build Hy2 list
+
+      - name: Collect
         run: |
-          set -euo pipefail
           mkdir -p providers
-          SOURCES=(
-            "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2.txt"
-            "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2-secure.txt"
-          )
-          > temp_raw.txt
-          for url in "${SOURCES[@]}"; do
-            echo "Grabbing $url..."
-            curl -f -s -L -A "Mozilla/5.0" "$url" >> temp_raw.txt || echo "Failed $url"
-            echo "" >> temp_raw.txt
-          done
-          grep -i "hysteria2://" temp_raw.txt | sort -u | sed '/^$/d' > providers/hy2_list.txt
-          echo "✅ Done! Found $(wc -l < providers/hy2_list.txt) proxies."
-      - name: Push to Repo
+          # Убрали 'set -e', чтобы не падал при ошибке одного файла
+          > raw_data.txt
+          
+          echo "📡 Download 1..."
+          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2.txt" >> raw_data.txt || echo "Skip 1"
+          
+          echo "📡 Download 2..."
+          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols/hy2-secure.txt" >> raw_data.txt || echo "Skip 2"
+
+          if [ -s raw_data.txt ]; then
+            tr -d '\r' < raw_data.txt | grep -i "hysteria2://" | sort -u > providers/hy2_list.txt
+            echo "✅ Total: $(wc -l < providers/hy2_list.txt)"
+          else
+            echo "❌ All sources failed"
+            exit 1
+          fi
+
+      - name: Push
         run: |
           git config --global user.name "Catsss3"
           git config --global user.email "vehesslav@gmail.com"
           git add providers/hy2_list.txt
-          git commit -m "Auto-update Hy2 list: $(date +'%d-%m-%Y %H:%M')" || echo "No changes"
+          git commit -m "Update Hy2: $(date)" || echo "No changes"
           git push origin main
