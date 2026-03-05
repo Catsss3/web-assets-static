@@ -18,18 +18,22 @@ jobs:
           mkdir -p providers
           > raw_data.txt
           
-          # ТЕПЕРЬ ИСПОЛЬЗУЕМ ВЕТКУ 'mirror'
-          echo "📡 Download Hy2 from mirror branch..."
-          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/mirror/githubmirror/split-by-protocols/hy2" >> raw_data.txt || echo "Skip hy2"
-          
-          echo "📡 Download Hy2-Secure from mirror branch..."
-          curl -f -s -L --retry 3 -A "Mozilla/5.0" "https://raw.githubusercontent.com/whoahaow/rjsxrd/mirror/githubmirror/split-by-protocols/hy2-secure" >> raw_data.txt || echo "Skip secure"
+          # Список файлов, которые мы видим на твоем скриншоте
+          FILES=("hy2.txt" "hy2-secure.txt" "hysteria2.txt" "hysteria2-secure.txt")
+          BASE_URL="https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols"
+
+          for file in "${FILES[@]}"; do
+            echo "📡 Пробую скачать: $file"
+            curl -f -s -L --retry 3 -A "Mozilla/5.0" "$BASE_URL/$file" >> raw_data.txt || echo "⚠️ Файл $file не найден"
+            echo "" >> raw_data.txt
+          done
 
           if [ -s raw_data.txt ]; then
+            # Очистка и фильтрация
             tr -d '\r' < raw_data.txt | grep -i "hysteria2://" | sort -u > providers/hy2_list.txt
-            echo "✅ SUCCESS! Found $(wc -l < providers/hy2_list.txt) servers."
+            echo "✅ ПОБЕДА! Найдено серверов: $(wc -l < providers/hy2_list.txt)"
           else
-            echo "❌ STILL EMPTY! Check the URLs manually."
+            echo "❌ ОПЯТЬ ПУСТО! Проверь права доступа к raw-файлам."
             exit 1
           fi
 
@@ -38,5 +42,5 @@ jobs:
           git config --global user.name "Catsss3"
           git config --global user.email "vehesslav@gmail.com"
           git add providers/hy2_list.txt
-          git commit -m "Auto-update Hy2 (mirror branch): $(date)" || echo "No changes"
+          git commit -m "Auto-update Hy2 from all sources: $(date)" || echo "No changes"
           git push origin main
