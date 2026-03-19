@@ -3,7 +3,7 @@ name: Hy2 Ultra Scanner
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */12 * * *'
+    - cron: '0 */12 * * *' # Твои родные 12 часов
 
 jobs:
   build:
@@ -15,48 +15,28 @@ jobs:
           token: ${{ secrets.WORKFLOW_TOKEN }}
           fetch-depth: 0
 
-      - name: Collect
-        run: |
-          mkdir -p providers
-          > raw_data.txt
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-          FILES=("hy2.txt" "hy2-secure.txt" "hysteria2.txt" "hysteria2-secure.txt")
-          BASE_URL="https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols"
+      - name: Install dependencies
+        run: pip install requests
 
-          for file in "${FILES[@]}"; do
-            echo "📡 База: $file"
-            curl -f -s -L --retry 3 "$BASE_URL/$file" >> raw_data.txt || echo "⚠️ Skip $file"
-          done
+      - name: Run Smart Scanner 🚀
+        run: python scanner.py
 
-          if [ -f sources/telegram_channels.json ]; then
-            grep -oP 'https?://[^"]+' sources/telegram_channels.json | sort -u > all_urls.txt
-            echo "✅ Источников: $(wc -l < all_urls.txt)"
-          else
-            echo "❌ Ошибка: sources/telegram_channels.json не найден"
-            exit 1
-          fi
-
-          echo "⚡️ Скоростной сбор (xargs -P 10)..."
-          cat all_urls.txt | xargs -P 10 -I {} sh -c 'curl -s -L --max-time 12 --retry 1 -A "Mozilla/5.0" "{}" | grep -oE "hysteria2://[^\"''' <]+" || true' >> raw_data.txt
-
-          if [ -s raw_data.txt ]; then
-            sed -i 's/\r//g' raw_data.txt
-            grep -i "hysteria2://" raw_data.txt | sed 's/[^a-zA-Z0-9./?@#:=_-]*$//' | sort -u > providers/hy2_list.txt
-            echo "🚀 Итог: $(wc -l < providers/hy2_list.txt) конфигов."
-          else
-            echo "❌ Данные не собраны"
-            exit 1
-          fi
-
-      - name: Push
+      - name: Push Results
         run: |
           git config --global user.name "Catsss3"
           git config --global user.email "vehesslav@gmail.com"
           git add providers/hy2_list.txt
+          
+          # Проверяем изменения, чтобы не плодить пустые коммиты
           if git diff --staged --quiet; then
-            echo "No changes"
+            echo "No changes in server list"
           else
-            git commit -m "Auto-update Hy2: $(date +'%d.%m %H:%M') [Found $(wc -l < providers/hy2_list.txt)]"
+            git commit -m "Auto-update Hy2: $(date +'%d.%m %H:%M') [Servers: $(wc -l < providers/hy2_list.txt)]"
             git pull --rebase origin main
             git push origin main
           fi
