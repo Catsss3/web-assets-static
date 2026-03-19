@@ -3,42 +3,38 @@ from concurrent.futures import ThreadPoolExecutor
 
 def decode_base64(data):
     try:
-        # Добавляем падинг, если его нет
         missing_padding = len(data) % 4
-        if missing_padding:
-            data += '=' * (4 - missing_padding)
+        if missing_padding: data += '=' * (4 - missing_padding)
         return base64.b64decode(data).decode('utf-8', errors='ignore')
-    except:
-        return ""
+    except: return ""
 
 def fetch_url(url):
-    # Фикс для GitHub ссылок
     if 'github.com' in url and '/blob/' in url:
         url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/')
     
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0'}
         resp = requests.get(url, timeout=30, headers=headers)
         if resp.status_code != 200: return []
         
-        text = resp.text.strip()
-        found = []
+        text = resp.text
+        # Улучшенная регулярка: ищет и hy2:// и hysteria2://
+        pattern = r"hy(?:steria)?2://[^\s#\"'<>]+"
         
-        # 1. Ищем прямые ссылки Hy2
-        found.extend(re.findall(r"hysteria2://[^\s#\"'<>]+", text, flags=re.IGNORECASE))
+        found = re.findall(pattern, text, flags=re.IGNORECASE)
         
-        # 2. Пробуем расшифровать как Base64 (стандарт для подписок)
-        if not found or len(text) > 100:
-            decoded = decode_base64(text)
-            if 'hysteria2://' in decoded.lower():
-                found.extend(re.findall(r"hysteria2://[^\s#\"'<>]+", decoded, flags=re.IGNORECASE))
+        # Проверка Base64
+        if not found or len(text.strip()) > 100:
+            decoded = decode_base64(text.strip())
+            if 'hy' in decoded.lower() and '2://' in decoded.lower():
+                found.extend(re.findall(pattern, decoded, flags=re.IGNORECASE))
 
-        # 3. Парсим YAML (Clash)
+        # Парсинг YAML
         if 'proxies:' in text:
             try:
                 y = yaml.safe_load(text)
                 for p in y.get('proxies', []):
-                    if p.get('type') == 'hysteria2':
+                    if p.get('type') in ['hysteria2', 'hy2']:
                         link = f"hysteria2://{p.get('auth')}@{p.get('server')}:{p.get('port')}?sni={p.get('sni', p.get('server',''))}#{p.get('name','')}"
                         found.append(link)
             except: pass
@@ -47,14 +43,14 @@ def fetch_url(url):
     except: return []
 
 def clean_and_parse():
-    print("📂 Загрузка всех источников...")
+    print("📂 Загрузка источников...")
     try:
         with open('sources/telegram_channels.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
             all_urls = list(data.values()) if isinstance(data, dict) else data
     except: return []
 
-    print(f"📡 Глубокое сканирование {len(all_urls)} источников (включая Base64)...")
+    print(f"📡 Глубокое сканирование (hy2 + hysteria2)...")
     raw_configs = set()
     
     with ThreadPoolExecutor(max_workers=50) as executor:
@@ -63,6 +59,10 @@ def clean_and_parse():
 
     unique_by_ip = {}
     for link in raw_configs:
+        # Приводим всё к единому стандарту hysteria2:// для работы в приложениях
+        if link.lower().startswith("hy2://"):
+            link = "hysteria2://" + link[6:]
+            
         clean = link.strip().rstrip('.,;)]}"')
         m = re.search(r'(?:@|^|//)([^:/@\s?#]+:[0-9]+)', clean)
         if m:
