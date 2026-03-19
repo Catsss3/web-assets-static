@@ -1,4 +1,5 @@
 name: Hy2 Ultra Scanner
+
 on:
   workflow_dispatch:
   schedule:
@@ -12,28 +13,38 @@ jobs:
         uses: actions/checkout@v3
         with:
           token: ${{ secrets.WORKFLOW_TOKEN }}
+          fetch-depth: 0
 
       - name: Collect
         run: |
           mkdir -p providers
           > raw_data.txt
-          
-          # Список файлов, которые мы видим на твоем скриншоте
+
           FILES=("hy2.txt" "hy2-secure.txt" "hysteria2.txt" "hysteria2-secure.txt")
           BASE_URL="https://raw.githubusercontent.com/whoahaow/rjsxrd/main/githubmirror/split-by-protocols"
 
           for file in "${FILES[@]}"; do
-            echo "📡 Пробую скачать: $file"
-            curl -f -s -L --retry 3 -A "Mozilla/5.0" "$BASE_URL/$file" >> raw_data.txt || echo "⚠️ Файл $file не найден"
-            echo "" >> raw_data.txt
+            echo "📡 База: $file"
+            curl -f -s -L --retry 3 "$BASE_URL/$file" >> raw_data.txt || echo "⚠️ Skip $file"
           done
 
-          if [ -s raw_data.txt ]; then
-            # Очистка и фильтрация
-            tr -d '\r' < raw_data.txt | grep -i "hysteria2://" | sort -u > providers/hy2_list.txt
-            echo "✅ ПОБЕДА! Найдено серверов: $(wc -l < providers/hy2_list.txt)"
+          if [ -f sources/telegram_channels.json ]; then
+            grep -oP 'https?://[^"]+' sources/telegram_channels.json | sort -u > all_urls.txt
+            echo "✅ Источников: $(wc -l < all_urls.txt)"
           else
-            echo "❌ ОПЯТЬ ПУСТО! Проверь права доступа к raw-файлам."
+            echo "❌ Ошибка: sources/telegram_channels.json не найден"
+            exit 1
+          fi
+
+          echo "⚡️ Скоростной сбор (xargs -P 10)..."
+          cat all_urls.txt | xargs -P 10 -I {} sh -c 'curl -s -L --max-time 12 --retry 1 -A "Mozilla/5.0" "{}" | grep -oE "hysteria2://[^\"''' <]+" || true' >> raw_data.txt
+
+          if [ -s raw_data.txt ]; then
+            sed -i 's/\r//g' raw_data.txt
+            grep -i "hysteria2://" raw_data.txt | sed 's/[^a-zA-Z0-9./?@#:=_-]*$//' | sort -u > providers/hy2_list.txt
+            echo "🚀 Итог: $(wc -l < providers/hy2_list.txt) конфигов."
+          else
+            echo "❌ Данные не собраны"
             exit 1
           fi
 
@@ -42,5 +53,10 @@ jobs:
           git config --global user.name "Catsss3"
           git config --global user.email "vehesslav@gmail.com"
           git add providers/hy2_list.txt
-          git commit -m "Auto-update Hy2 from all sources: $(date)" || echo "No changes"
-          git push origin main
+          if git diff --staged --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Auto-update Hy2: $(date +'%d.%m %H:%M') [Found $(wc -l < providers/hy2_list.txt)]"
+            git pull --rebase origin main
+            git push origin main
+          fi
