@@ -6,44 +6,57 @@ from concurrent.futures import ThreadPoolExecutor
 
 def fetch_url(url):
     try:
-        # Увеличиваем таймаут для жирных файлов GitHub
-        timeout = 20 if "raw.githubusercontent.com" in url else 12
-        resp = requests.get(url, timeout=timeout, headers={'User-Agent': 'Mozilla/5.0'})
+        # Увеличиваем таймаут и добавляем заголовки для GitHub
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        resp = requests.get(url, timeout=25, headers=headers)
         
         if resp.status_code == 200:
-            # Ищем все hysteria2 ссылки
-            found = re.findall(r"hysteria2://[^\s#\"'<>]+", resp.text, flags=re.IGNORECASE)
-            return found
-    except Exception:
-        pass
+            text = resp.text
+            # 1. Сначала ищем классической регуляркой
+            found = re.findall(r"hysteria2://[^\s#\"'<>]+", text, flags=re.IGNORECASE)
+            
+            # 2. ДОПОЛНИТЕЛЬНО: Если файл - это просто список в столбик, разбиваем по строкам
+            if not found or len(found) < 5:
+                lines = text.splitlines()
+                for line in lines:
+                    line = line.strip()
+                    if line.lower().startswith("hysteria2://"):
+                        found.append(line)
+            
+            return list(set(found)) # Убираем дубли внутри одного файла
+    except Exception as e:
+        print(f"⚠️ Ошибка на {url[:30]}... : {e}")
     return []
 
 def clean_and_parse():
-    print("📂 Загрузка единого хранилища источников...")
+    print("📂 Загрузка источников из JSON...")
     try:
         with open('sources/telegram_channels.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
             sources = list(data.values()) if isinstance(data, dict) else data
     except Exception as e:
-        print(f"❌ Ошибка: файл источников не найден или поврежден: {e}")
+        print(f"❌ Критическая ошибка JSON: {e}")
         return []
 
-    print(f"📡 Запуск сканирования ({len(sources)} источников)...")
+    print(f"📡 Сбор данных из {len(sources)} источников...")
     raw_configs = set()
     
-    # 30 потоков, чтобы быстро прожевать и базы, и каналы
-    with ThreadPoolExecutor(max_workers=30) as executor:
+    # Используем 40 потоков для скорости
+    with ThreadPoolExecutor(max_workers=40) as executor:
         results = executor.map(fetch_url, sources)
         for found_links in results:
-            raw_configs.update(found_links)
+            if found_links:
+                raw_configs.update(found_links)
 
-    print(f"🔍 Найдено всего: {len(raw_configs)}. Фильтрация дубликатов по IP...")
+    print(f"🔍 Найдено сырых строк: {len(raw_configs)}. Считаю уникальные IP...")
     
     unique_by_ip = {}
     for link in raw_configs:
-        clean_link = link.rstrip('.,')
-        # Ищем IP:PORT
-        m = re.search(r'(?:@|^|//)([^:/@\s]+:[0-9]+)', clean_link)
+        # Очистка от мусора
+        clean_link = link.strip().rstrip('.,;)]}"')
+        
+        # Более жесткий поиск IP:PORT
+        m = re.search(r'(?:@|^|//)([^:/@\s?#]+:[0-9]+)', clean_link)
         if m:
             ip_port = m.group(1)
             if ip_port not in unique_by_ip:
@@ -59,4 +72,4 @@ if __name__ == '__main__':
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(final_links))
 
-    print(f"✅ Готово! Уникальных серверов: {len(final_links)}")
+    print(f"✅ Готово! Финальный улов: {len(final_links)} уникальных серверов.")
