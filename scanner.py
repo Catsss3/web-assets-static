@@ -2,60 +2,66 @@ import json
 import re
 import os
 import requests
+import yaml
 from concurrent.futures import ThreadPoolExecutor
 
 def fetch_url(url):
+    # Убираем мертвые прокси-зеркала, если они есть в ссылке
+    url = url.replace('https://mirror.ghproxy.com/', '').replace('https://raw.fastgit.org/', 'https://raw.githubusercontent.com/')
+    
     try:
-        # Увеличиваем таймаут и добавляем заголовки для GitHub
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        resp = requests.get(url, timeout=25, headers=headers)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        resp = requests.get(url, timeout=20, headers=headers)
         
         if resp.status_code == 200:
             text = resp.text
-            # 1. Сначала ищем классической регуляркой
-            found = re.findall(r"hysteria2://[^\s#\"'<>]+", text, flags=re.IGNORECASE)
+            found = []
             
-            # 2. ДОПОЛНИТЕЛЬНО: Если файл - это просто список в столбик, разбиваем по строкам
-            if not found or len(found) < 5:
-                lines = text.splitlines()
-                for line in lines:
-                    line = line.strip()
-                    if line.lower().startswith("hysteria2://"):
-                        found.append(line)
+            # 1. Ищем прямые ссылки Hy2
+            found.extend(re.findall(r"hysteria2://[^\s#\"'<>]+", text, flags=re.IGNORECASE))
             
-            return list(set(found)) # Убираем дубли внутри одного файла
-    except Exception as e:
-        print(f"⚠️ Ошибка на {url[:30]}... : {e}")
+            # 2. Если это Clash YAML, вытаскиваем из структуры
+            if 'proxies:' in text or url.endswith(('.yaml', '.yml')):
+                try:
+                    y = yaml.safe_load(text)
+                    if isinstance(y, dict) and 'proxies' in y:
+                        for p in y['proxies']:
+                            if p.get('type') == 'hysteria2':
+                                # Собираем ссылку вручную из полей YAML
+                                link = f"hysteria2://{p.get('auth')}@{p.get('server')}:{p.get('port')}?insecure={int(p.get('skip-cert-verify', 0))}&sni={p.get('sni', p.get('server'))}#{p.get('name')}"
+                                found.append(link)
+                except: pass
+            
+            # 3. Разбиваем построчно для обычных TXT
+            if not found:
+                for line in text.splitlines():
+                    if 'hysteria2://' in line.lower():
+                        found.append(line.strip())
+            
+            return found
+    except: pass
     return []
 
 def clean_and_parse():
-    print("📂 Загрузка источников из JSON...")
+    print("📂 Загрузка источников...")
     try:
         with open('sources/telegram_channels.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
             sources = list(data.values()) if isinstance(data, dict) else data
-    except Exception as e:
-        print(f"❌ Критическая ошибка JSON: {e}")
-        return []
+    except: return []
 
-    print(f"📡 Сбор данных из {len(sources)} источников...")
+    print(f"📡 Глубокое сканирование {len(sources)} источников...")
     raw_configs = set()
     
-    # Используем 40 потоков для скорости
-    with ThreadPoolExecutor(max_workers=40) as executor:
+    with ThreadPoolExecutor(max_workers=50) as executor:
         results = executor.map(fetch_url, sources)
         for found_links in results:
-            if found_links:
-                raw_configs.update(found_links)
+            if found_links: raw_configs.update(found_links)
 
-    print(f"🔍 Найдено сырых строк: {len(raw_configs)}. Считаю уникальные IP...")
-    
     unique_by_ip = {}
     for link in raw_configs:
-        # Очистка от мусора
         clean_link = link.strip().rstrip('.,;)]}"')
-        
-        # Более жесткий поиск IP:PORT
+        # Извлекаем IP:PORT для дедупликации
         m = re.search(r'(?:@|^|//)([^:/@\s?#]+:[0-9]+)', clean_link)
         if m:
             ip_port = m.group(1)
@@ -66,10 +72,7 @@ def clean_and_parse():
 
 if __name__ == '__main__':
     os.makedirs('providers', exist_ok=True)
-    final_links = clean_and_parse()
-    
-    out_path = os.path.join('providers', 'hy2_list.txt')
-    with open(out_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(final_links))
-
-    print(f"✅ Готово! Финальный улов: {len(final_links)} уникальных серверов.")
+    res = clean_and_parse()
+    with open('providers/hy2_list.txt', 'w', encoding='utf-8') as f:
+        f.write('\n'.join(res))
+    print(f"✅ Итог: {len(res)} уникальных серверов.")
