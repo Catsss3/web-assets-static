@@ -1,4 +1,3 @@
-
 import json
 import re
 import os
@@ -9,8 +8,8 @@ def fetch_url(url):
     try:
         resp = requests.get(url, timeout=12, headers={'User-Agent': 'Mozilla/5.0'})
         if resp.status_code == 200:
-            # Ищем ссылки, исключая знаки препинания в самом конце
-            return re.findall(r'hysteria2://[^\s#"'<>,]+', resp.text, flags=re.IGNORECASE)
+            # Исправленная регулярка: используем двойные кавычки снаружи и экранируем \s
+            return re.findall(r"hysteria2://[^\s#\"'<>]+", resp.text, flags=re.IGNORECASE)
     except Exception:
         pass
     return []
@@ -28,7 +27,6 @@ def clean_and_parse():
     print(f"📡 Начинаю сбор из {len(sources)} источников в 20 потоков...")
     raw_configs = set()
     
-    # Используем ThreadPoolExecutor для ускорения в 20 раз
     with ThreadPoolExecutor(max_workers=20) as executor:
         results = executor.map(fetch_url, sources)
         for found_links in results:
@@ -38,12 +36,13 @@ def clean_and_parse():
     
     unique_by_ip = {}
     for link in raw_configs:
-        # Улучшенный поиск IP:PORT (учитывает и @ и просто начало строки)
-        m = re.search(r'(?:@|^|//)([^:/@\s]+:[0-9]+)', link)
+        # Убираем возможные лишние символы в конце (точки, запятые)
+        clean_link = link.rstrip('.,')
+        m = re.search(r'(?:@|^|//)([^:/@\s]+:[0-9]+)', clean_link)
         if m:
             ip_port = m.group(1)
             if ip_port not in unique_by_ip:
-                unique_by_ip[ip_port] = link
+                unique_by_ip[ip_port] = clean_link
 
     return list(unique_by_ip.values())
 
