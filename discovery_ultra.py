@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 
 # --- CONFIG ---
 OUTPUT_FILE = Path("sources/telegram_channels.json")
-SOURCE_MARKERS = [r"hysteria2://", r"tuic://", r"\b(?:\d{1,3}\.){3}\d{1,3}:\d{2,5}\b"]
+SOURCE_MARKERS = [r"hysteria2://", r"tuic://", r"\\b(?:\\d{1,3}\\.){3}\\d{1,3}:\\d{2,5}\\b"]
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -59,7 +59,9 @@ def main():
         with open(OUTPUT_FILE, "r") as f: db = set(json.load(f))
     
     found, checked = set(), set()
-        queries = [
+    
+    # ИСПРАВЛЕННЫЙ СПИСОК ЗАПРОСОВ С ПРАВИЛЬНЫМИ ОТСТУПАМИ
+    queries = [
         "site:t.me/s/ 'hysteria2://'",
         "site:t.me/s/ 'tuic://'",
         "site:github.com 'hysteria2://' extension:txt",
