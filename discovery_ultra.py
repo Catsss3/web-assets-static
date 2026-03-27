@@ -53,7 +53,33 @@ def is_valid(url):
         return any(re.search(m, data, re.IGNORECASE) for m in SOURCE_MARKERS)
     except: return False
 
-def main():
+
+def discover_from_github(token):
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    queries = ['hysteria2+in:file+extension:txt', 'tuic+in:file+extension:txt']
+    new_urls = set()
+    for q in queries:
+        try:
+            url = f"https://api.github.com/search/code?q={q}&sort=indexed&order=desc"
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code == 200:
+                for item in r.json().get('items', []):
+                    repo = item['repository']['full_name']
+                    path = item['path']
+                    # Формируем RAW ссылку
+                    raw_url = f"https://raw.githubusercontent.com/{repo}/main/{path}"
+                    new_urls.add(raw_url)
+            time.sleep(2)
+        except: pass
+    return new_urls
+\ndef main():\n    # Добавляем поиск через GitHub API
+    github_token = os.environ.get('GithubApiToken') or os.environ.get('GITHUB_TOKEN')
+    if github_token:
+        logging.info("🕵️‍♂️ Поиск новых RAW-источников на GitHub...")
+        github_sources = discover_from_github(github_token)
+        new_src.update(github_sources)
+        logging.info(f"🔎 GitHub API выдал {len(github_sources)} потенциальных источников.")
+    
     db = set()
     if OUTPUT_FILE.exists():
         with open(OUTPUT_FILE, "r") as f: db = set(json.load(f))
