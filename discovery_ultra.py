@@ -59,7 +59,21 @@ def main():
         with open(OUTPUT_FILE, "r") as f: db = set(json.load(f))
     
     found, checked = set(), set()
-    queries = ["site:t.me/s/ 'hysteria2://'", "site:github.com 'hysteria2' extension:txt"]
+        queries = [
+        "site:t.me/s/ 'hysteria2://'",
+        "site:t.me/s/ 'tuic://'",
+        "site:github.com 'hysteria2://' extension:txt",
+        "site:github.com 'tuic://' extension:txt",
+        "site:gist.github.com 'hysteria2://'",
+        "site:gist.github.com 'tuic://'",
+        "site:pastebin.com 'hysteria2://'",
+        "site:pastebin.com 'tuic://'",
+        "intitle:'index of' 'hysteria2.txt'",
+        "intitle:'index of' 'tuic.txt'",
+        "'hysteria2' 'proxy' filetype:txt",
+        "site:raw.githubusercontent.com 'tuic://'",
+        "site:cdn.jsdelivr.net 'hysteria2://'"
+    ]
     
     for q in queries:
         logging.info(f"🔎 Поиск: {q}")
