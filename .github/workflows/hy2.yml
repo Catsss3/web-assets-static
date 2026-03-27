@@ -24,7 +24,7 @@ jobs:
         run: pip install requests pyyaml beautifulsoup4
 
       - name: Run Discovery 🔍
-        run: python discovery_ultra.py
+        run: python discovery_ultra.py\n        env:\n          GITHUB_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
 
       - name: Run Smart Scanner 🚀
         run: python scanner.py
