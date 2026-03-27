@@ -28,7 +28,8 @@ def decode_base64(data: str) -> str:
     except: return ""
 
 def extract_links(text: str) -> List[str]:
-    proxy_pattern = r"(?:hy(?:steria)?2|tuic)://[^\s#"'<>]+"
+    # ИСПОЛЬЗУЕМ ОДИНАРНЫЕ КАВЫЧКИ СНАРУЖИ, ЧТОБЫ ДВОЙНЫЕ ВНУТРИ НЕ ЛОМАЛИ СТРОКУ
+    proxy_pattern = r'(?:hy(?:steria)?2|tuic)://[^\s#"'<>]+'
     found = re.findall(proxy_pattern, text, flags=re.IGNORECASE)
     if len(found) < 3:
         for chunk in re.findall(r'[A-Za-z0-9+/]{50,}=*', text):
@@ -94,9 +95,7 @@ def fetch_worker(url: str, depth: int = 0) -> List[str]:
                     for f in as_completed(futures): found.extend(f.result())
         time.sleep(RATE_LIMIT)
         return found
-    except Exception as e:
-        logging.debug(f"Error fetching {url}: {e}")
-        return []
+    except: return []
 
 def main():
     os.makedirs("providers", exist_ok=True)
