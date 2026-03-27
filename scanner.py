@@ -19,13 +19,13 @@ def decode_base64(data: str) -> str:
     except: return ""
 
 def extract_links(text: str) -> list:
-    pattern = r"(?:hy(?:steria)?2|tuic)://[a-zA-Z0-9%._~:-]+@[a-zA-Z0-9.-]+:[0-9]+[^\s#\"'<>]*"
-    found = re.findall(pattern, text, flags=re.IGNORECASE)
+    proxy_pattern = r"(?:hy(?:steria)?2|tuic)://[a-zA-Z0-9%._~:-]+@[a-zA-Z0-9.-]+:[0-9]+[^\s#\"'<>]*"
+    found = re.findall(proxy_pattern, text, flags=re.IGNORECASE)
     if len(found) < 2:
         potential_b64 = re.findall(r'[a-zA-Z0-9+/]{50,}=*', text)
         for chunk in potential_b64:
             decoded = decode_base64(chunk)
-            if "://" in decoded: found.extend(re.findall(pattern, decoded, flags=re.IGNORECASE))
+            if "://" in decoded: found.extend(re.findall(proxy_pattern, decoded, flags=re.IGNORECASE))
     return found
 
 def parse_yaml_safe(text: str) -> list:
@@ -48,14 +48,24 @@ def parse_yaml_safe(text: str) -> list:
     except: pass
     return links
 
-def fetch_worker(url: str) -> list:
+def fetch_worker(url: str, depth=0) -> list:
     if "github.com" in url and "/blob/" in url:
         url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
     try:
         r = requests.get(url, timeout=TIMEOUT, headers=HEADERS)
         if r.status_code != 200: return []
-        found = extract_links(r.text)
-        found.extend(parse_yaml_safe(r.text))
+        text = r.text
+        found = extract_links(text)
+        found.extend(parse_yaml_safe(text))
+        
+        # РЕКУРСИЯ: Если нашли ссылки на raw-файлы, заходим в них
+        if depth == 0:
+            sub_urls = re.findall(r'https?://(?:raw\.githubusercontent\.com|gist\.githubusercontent\.com|pastebin\.com)[^\s#\"''<>]+', text)
+            if sub_urls:
+                logging.info(f"  ↪️ Рекурсия: {len(sub_urls)} ссылок в {url}")
+                with ThreadPoolExecutor(max_workers=10) as sub_ex:
+                    futures = [sub_ex.submit(fetch_worker, s_url, depth=1) for s_url in sub_urls]
+                    for f in as_completed(futures): found.extend(f.result())
         return found
     except: return []
 
@@ -76,7 +86,7 @@ def main():
             key = f"{link.split(':')[0]}_{match.group(2)}"
             if key not in final: final[key] = link.strip()
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f: f.write("\n".join(final.values()))
-    print(f"✅ Готово! Собрано {len(final)} прокси.")
+    print(f"✅ Итог: {len(final)} уникальных прокси.")
 
 if __name__ == '__main__':
     main()
