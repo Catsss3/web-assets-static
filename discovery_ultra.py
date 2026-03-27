@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import json, logging, os, re, random, time, requests
 from pathlib import Path
-from typing import Set, List
 from urllib.parse import parse_qs, urlparse, unquote
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -25,12 +22,46 @@ session.mount("https://", HTTPAdapter(max_retries=retries))
 def get_headers():
     return {"User-Agent": random.choice(USER_AGENTS), "Referer": "https://www.google.com/"}
 
-def clean_url(href):
-    parsed = urlparse(href)
-    if parsed.path == "/url":
-        qs = parse_qs(parsed.query)
-        if "q" in qs: return unquote(qs["q"][0])
-    return href
+def is_valid(url):
+    try:
+        r = session.get(url, headers=get_headers(), timeout=10, stream=True)
+        data = r.raw.read(300*1024, decode_content=True).decode('utf-8', errors='ignore')
+        return any(re.search(m, data, re.IGNORECASE) for m in SOURCE_MARKERS)
+    except: return False
+
+def discover_from_github(token):
+    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+    new_urls = set()
+    
+    # 1. Поиск по РЕПОЗИТОРИЯМ (твои новые ключи)
+    repo_queries = ['hy2+extension:txt', 'tuic+extension:txt', 'sub+hysteria']
+    for q in repo_queries:
+        logging.info(f"🔎 GitHub Репозитории: {q}")
+        try:
+            url = f"https://api.github.com/search/code?q={q}&sort=indexed&order=desc"
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code == 200:
+                for item in r.json().get('items', []):
+                    raw_url = f"https://raw.githubusercontent.com/{item['repository']['full_name']}/main/{item['path']}"
+                    if is_valid(raw_url): new_urls.add(raw_url)
+            time.sleep(2)
+        except: pass
+
+    # 2. Поиск по ГИСТАМ (новое дополнение)
+    gist_queries = ['hy2', 'tuic']
+    for gq in gist_queries:
+        logging.info(f"📝 GitHub Гисты: {gq}")
+        try:
+            url = f"https://api.github.com/search/code?q={gq}+host:gist.github.com&sort=indexed"
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code == 200:
+                for item in r.json().get('items', []):
+                    raw_url = item['html_url'].replace('/blob/', '/raw/')
+                    if is_valid(raw_url): new_urls.add(raw_url)
+            time.sleep(2)
+        except: pass
+        
+    return new_urls
 
 def search(engine, query):
     urls = set()
@@ -39,36 +70,15 @@ def search(engine, query):
         r = session.get(base, headers=get_headers(), cookies={'CONSENT': 'YES+'}, timeout=20)
         soup = BeautifulSoup(r.text, "html.parser")
         for a in soup.select("a"):
-            h = clean_url(a.get("href", ""))
+            h = a.get("href", "")
+            parsed = urlparse(h)
+            if parsed.path == "/url":
+                qs = parse_qs(parsed.query)
+                if "q" in qs: h = unquote(qs["q"][0])
             if h.startswith("http") and not any(x in h for x in ["google", "duckduckgo"]):
                 urls.add(h.split('#')[0])
     except: pass
     return urls
-
-def discover_from_github(token):
-    headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-    queries = ['hysteria2+in:file+extension:txt', 'tuic+in:file+extension:txt']
-    new_urls = set()
-    for q in queries:
-        try:
-            url = f"https://api.github.com/search/code?q={q}&sort=indexed&order=desc"
-            r = requests.get(url, headers=headers, timeout=15)
-            if r.status_code == 200:
-                for item in r.json().get('items', []):
-                    repo = item['repository']['full_name']
-                    path = item['path']
-                    raw_url = f"https://raw.githubusercontent.com/{repo}/main/{path}"
-                    new_urls.add(raw_url)
-            time.sleep(2)
-        except: pass
-    return new_urls
-
-def is_valid(url):
-    try:
-        r = session.get(url, headers=get_headers(), timeout=10, stream=True)
-        data = r.raw.read(300*1024, decode_content=True).decode('utf-8', errors='ignore')
-        return any(re.search(m, data, re.IGNORECASE) for m in SOURCE_MARKERS)
-    except: return False
 
 def main():
     db = set()
@@ -79,40 +89,28 @@ def main():
     
     new_src = set()
     
-    # 1. GitHub Discovery
-    github_token = os.environ.get('GithubApiToken') or os.environ.get('GITHUB_TOKEN')
-    if github_token:
-        logging.info("🕵️‍♂️ Поиск новых RAW-источников на GitHub...")
-        github_sources = discover_from_github(github_token)
+    # 1. GitHub & Gist Discovery
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GithubApiToken')
+    if token:
+        github_sources = discover_from_github(token)
         new_src.update(github_sources)
-        logging.info(f"🔎 GitHub API выдал {len(github_sources)} потенциальных источников.")
 
-    # 2. Search Engine Discovery
-    queries = [
-        "site:t.me/s/ 'hysteria2://'",
-        "site:t.me/s/ 'tuic://'",
-        "site:github.com 'hysteria2://' extension:txt",
-        "site:gist.github.com 'hysteria2://'",
-        "site:pastebin.com 'hysteria2://'",
-        "intitle:'index of' 'hysteria2.txt'",
-        "site:cdn.jsdelivr.net 'hysteria2://'"
-    ]
-    
-    for q in queries:
-        logging.info(f"🔎 Поиск в поисковиках: {q}")
+    # 2. Search Engine Discovery (Твой Google поиск)
+    google_queries = ["site:t.me/s/ 'hysteria2://'", "site:t.me/s/ 'tuic://'", "site:cdn.jsdelivr.net 'hysteria2://'"]
+    for q in google_queries:
+        logging.info(f"🔎 Google поиск: {q}")
         found = search("google", q)
         for l in found:
-            if l not in db:
-                if is_valid(l): new_src.add(l)
+            if l not in db and is_valid(l): new_src.add(l)
         time.sleep(random.uniform(5, 10))
 
     if new_src:
         final = sorted(list(db.union(new_src)))
         OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(OUTPUT_FILE, "w") as f: json.dump(final, f, indent=2)
-        logging.info(f"✨ Добавлено {len(new_src)} новых источников.")
+        logging.info(f"✨ Готово! Добавлено {len(new_src)} новых источников.")
     else:
-        logging.info("😴 Ничего нового.")
+        logging.info("😴 Ничего нового не найдено.")
 
 if __name__ == '__main__':
     main()
