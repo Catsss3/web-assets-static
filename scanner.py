@@ -28,13 +28,14 @@ def decode_base64(data: str) -> str:
     except: return ""
 
 def extract_links(text: str) -> List[str]:
-    # ИСПОЛЬЗУЕМ ОДИНАРНЫЕ КАВЫЧКИ СНАРУЖИ, ЧТОБЫ ДВОЙНЫЕ ВНУТРИ НЕ ЛОМАЛИ СТРОКУ
-    proxy_pattern = r'(?:hy(?:steria)?2|tuic)://[^\s#"'<>]+'
+    # Используем максимально простую и надежную запись регулярки
+    proxy_pattern = r'(?:hysteria2|hy2|tuic)://[^\s#"\']+'
     found = re.findall(proxy_pattern, text, flags=re.IGNORECASE)
     if len(found) < 3:
         for chunk in re.findall(r'[A-Za-z0-9+/]{50,}=*', text):
             decoded = decode_base64(chunk)
-            if "://" in decoded: found.extend(re.findall(proxy_pattern, decoded, flags=re.IGNORECASE))
+            if "://" in decoded: 
+                found.extend(re.findall(proxy_pattern, decoded, flags=re.IGNORECASE))
     return found
 
 def parse_yaml_safe(text: str) -> List[str]:
@@ -88,7 +89,8 @@ def fetch_worker(url: str, depth: int = 0) -> List[str]:
         found = extract_links(content)
         found.extend(parse_yaml_safe(content))
         if depth < MAX_DEPTH:
-            subs = re.findall(r'https?://(?:raw\.githubusercontent\.com|gist\.githubusercontent\.com|pastebin\.com|cdn\.jsdelivr\.net)[^\s#"'<>]+', content)
+            sub_pattern = r'https?://(?:raw\.githubusercontent\.com|gist\.github\.com|pastebin\.com|cdn\.jsdelivr\.net)[^\s#"\']+'
+            subs = re.findall(sub_pattern, content)
             if subs:
                 with ThreadPoolExecutor(max_workers=5) as sub_ex:
                     futures = [sub_ex.submit(fetch_worker, u, depth + 1) for u in subs]
