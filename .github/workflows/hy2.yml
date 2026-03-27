@@ -3,7 +3,7 @@ name: Hy2 Ultra Scanner
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */12 * * *'
+    - cron: '0 */12 * * *'  # Запуск каждые 12 часов
 
 jobs:
   build:
@@ -21,7 +21,10 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install requests pyyaml
+        run: pip install requests pyyaml beautifulsoup4
+
+      - name: Run Discovery 🔍
+        run: python discovery_ultra.py
 
       - name: Run Smart Scanner 🚀
         run: python scanner.py
@@ -30,12 +33,15 @@ jobs:
         run: |
           git config --global user.name "Catsss3"
           git config --global user.email "vehesslav@gmail.com"
-          git add providers/hy2_list.txt
+          
+          # Добавляем результаты сканирования и обновленный список источников
+          git add providers/hy2_list.txt sources/telegram_channels.json
           
           if git diff --staged --quiet; then
-            echo "No changes in server list"
+            echo "No changes to commit"
           else
-            git commit -m "Auto-update Hy2: $(date +'%d.%m %H:%M') [Servers: $(wc -l < providers/hy2_list.txt)]"
+            SERVER_COUNT=$(wc -l < providers/hy2_list.txt || echo "0")
+            git commit -m "Auto-update: $(date +'%d.%m %H:%M') [Servers: $SERVER_COUNT]"
             git pull --rebase origin main
             git push origin main
           fi
