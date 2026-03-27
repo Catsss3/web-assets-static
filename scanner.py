@@ -1,8 +1,14 @@
-import json, re, os, requests, yaml, base64, logging, random
+#!/usr/bin/env python3
+import json, re, os, requests, yaml, base64, logging, random, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Set
 
+# --- CONFIG ---
 MAX_WORKERS = 64
 TIMEOUT = 45
+MAX_DEPTH = 1
+CHUNK_SIZE = 256 * 1024
+RATE_LIMIT = 0.05
 SOURCES_FILE = "sources/telegram_channels.json"
 OUTPUT_FILE = "providers/hy2_list.txt"
 
@@ -21,8 +27,8 @@ def decode_base64(data: str) -> str:
         return base64.b64decode(cleaned).decode("utf-8", errors="ignore")
     except: return ""
 
-def extract_links(text: str) -> list:
-    proxy_pattern = r"(?:hy(?:steria)?2|tuic)://[^\s#\"'<>]+"
+def extract_links(text: str) -> List[str]:
+    proxy_pattern = r"(?:hy(?:steria)?2|tuic)://[^\s#"'<>]+"
     found = re.findall(proxy_pattern, text, flags=re.IGNORECASE)
     if len(found) < 3:
         for chunk in re.findall(r'[A-Za-z0-9+/]{50,}=*', text):
@@ -30,7 +36,7 @@ def extract_links(text: str) -> list:
             if "://" in decoded: found.extend(re.findall(proxy_pattern, decoded, flags=re.IGNORECASE))
     return found
 
-def parse_yaml_safe(text: str) -> list:
+def parse_yaml_safe(text: str) -> List[str]:
     links = []
     text_lower = text.lower()
     keys = ['proxies:', 'proxy:', 'proxy-providers:']
@@ -44,7 +50,7 @@ def parse_yaml_safe(text: str) -> list:
             srv, prt = p.get('server'), p.get('port')
             if not srv or not prt: continue
             name = p.get('name', f"{ptype}_{srv}")
-            if ptype in ['hysteria2', 'hy2']:
+            if ptype in ('hysteria2', 'hy2'):
                 links.append(f"hysteria2://{p.get('auth', '')}@{srv}:{prt}?sni={p.get('sni', srv)}#{name}")
             elif ptype == 'tuic':
                 auth = f"{p.get('uuid', '')}:{p.get('password', '')}" if p.get('password') else p.get('uuid', '')
@@ -54,37 +60,51 @@ def parse_yaml_safe(text: str) -> list:
     return links
 
 def normalize_url(url: str) -> str:
-    if "github.com" in url:
-        if "/blob/" in url: return url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
-        if "/raw/" not in url and "raw.githubusercontent.com" not in url:
-            parts = url.split("/")
-            if len(parts) > 6: return f"https://raw.githubusercontent.com/{parts[3]}/{parts[4]}/{parts[6]}/{'/'.join(parts[7:])}"
+    if "github.com" not in url: return url
+    if "/blob/" in url: return url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+    if "/raw/" not in url and "raw.githubusercontent.com" not in url:
+        parts = url.split("/")
+        if len(parts) > 6: return f"https://raw.githubusercontent.com/{parts[3]}/{parts[4]}/{parts[6]}/{'/'.join(parts[7:])}"
     return url
 
-def fetch_worker(url: str, depth=0) -> list:
+def chunked_read(response, limit: int) -> str:
+    collected = []
+    read = 0
+    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+        if not chunk: break
+        collected.append(chunk)
+        read += len(chunk)
+        if read >= limit: break
+    return b"".join(collected).decode('utf-8', errors='ignore')
+
+def fetch_worker(url: str, depth: int = 0) -> List[str]:
     url = normalize_url(url)
     try:
         headers = {"User-Agent": random.choice(USER_AGENTS)}
-        r = requests.get(url, timeout=TIMEOUT, headers=headers, stream=True)
-        if r.status_code != 200: return []
-        content = r.raw.read(300 * 1024, decode_content=True).decode('utf-8', errors='ignore')
+        with requests.get(url, timeout=TIMEOUT, headers=headers, stream=True) as r:
+            if r.status_code != 200: return []
+            content = chunked_read(r, limit=300 * 1024)
         found = extract_links(content)
         found.extend(parse_yaml_safe(content))
-        if depth < 1:
-            subs = re.findall(r'https?://(?:raw\.githubusercontent\.com|gist\.githubusercontent\.com|pastebin\.com)[^\s#\"''<>]+', content)
+        if depth < MAX_DEPTH:
+            subs = re.findall(r'https?://(?:raw\.githubusercontent\.com|gist\.githubusercontent\.com|pastebin\.com|cdn\.jsdelivr\.net)[^\s#"'<>]+', content)
             if subs:
                 with ThreadPoolExecutor(max_workers=5) as sub_ex:
-                    futures = [sub_ex.submit(fetch_worker, u, depth+1) for u in subs]
+                    futures = [sub_ex.submit(fetch_worker, u, depth + 1) for u in subs]
                     for f in as_completed(futures): found.extend(f.result())
+        time.sleep(RATE_LIMIT)
         return found
-    except: return []
+    except Exception as e:
+        logging.debug(f"Error fetching {url}: {e}")
+        return []
 
 def main():
     os.makedirs("providers", exist_ok=True)
-    with open(SOURCES_FILE, "r") as f:
-        src = json.load(f)
-        urls = list(src.values()) if isinstance(src, dict) else src
-    all_raw = set()
+    try:
+        with open(SOURCES_FILE, "r", encoding="utf-8") as f: src = json.load(f)
+    except: return
+    urls = list(src.values()) if isinstance(src, dict) else src
+    all_raw: Set[str] = set()
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
         futures = [ex.submit(fetch_worker, u) for u in urls]
         for f in as_completed(futures): all_raw.update(f.result())
@@ -98,4 +118,4 @@ def main():
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f: f.write("\n".join(final.values()))
     logging.info(f"✅ Итог: {len(final)} уникальных прокси.")
 
-if __name__ == '__main__': main()
+if __name__ == "__main__": main()
