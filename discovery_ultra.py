@@ -18,7 +18,6 @@ USER_AGENTS = [
 ]
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-
 session = requests.Session()
 retries = Retry(total=3, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
 session.mount("https://", HTTPAdapter(max_retries=retries))
@@ -46,14 +45,6 @@ def search(engine, query):
     except: pass
     return urls
 
-def is_valid(url):
-    try:
-        r = session.get(url, headers=get_headers(), timeout=10, stream=True)
-        data = r.raw.read(300*1024, decode_content=True).decode('utf-8', errors='ignore')
-        return any(re.search(m, data, re.IGNORECASE) for m in SOURCE_MARKERS)
-    except: return False
-
-
 def discover_from_github(token):
     headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
     queries = ['hysteria2+in:file+extension:txt', 'tuic+in:file+extension:txt']
@@ -66,62 +57,62 @@ def discover_from_github(token):
                 for item in r.json().get('items', []):
                     repo = item['repository']['full_name']
                     path = item['path']
-                    # Формируем RAW ссылку
                     raw_url = f"https://raw.githubusercontent.com/{repo}/main/{path}"
                     new_urls.add(raw_url)
             time.sleep(2)
         except: pass
     return new_urls
-\ndef main():\n    # Добавляем поиск через GitHub API
+
+def is_valid(url):
+    try:
+        r = session.get(url, headers=get_headers(), timeout=10, stream=True)
+        data = r.raw.read(300*1024, decode_content=True).decode('utf-8', errors='ignore')
+        return any(re.search(m, data, re.IGNORECASE) for m in SOURCE_MARKERS)
+    except: return False
+
+def main():
+    db = set()
+    if OUTPUT_FILE.exists():
+        with open(OUTPUT_FILE, "r") as f:
+            try: db = set(json.load(f))
+            except: db = set()
+    
+    new_src = set()
+    
+    # 1. GitHub Discovery
     github_token = os.environ.get('GithubApiToken') or os.environ.get('GITHUB_TOKEN')
     if github_token:
         logging.info("🕵️‍♂️ Поиск новых RAW-источников на GitHub...")
         github_sources = discover_from_github(github_token)
         new_src.update(github_sources)
         logging.info(f"🔎 GitHub API выдал {len(github_sources)} потенциальных источников.")
-    
-    db = set()
-    if OUTPUT_FILE.exists():
-        with open(OUTPUT_FILE, "r") as f: db = set(json.load(f))
-    
-    found, checked = set(), set()
-    
-    # ИСПРАВЛЕННЫЙ СПИСОК ЗАПРОСОВ С ПРАВИЛЬНЫМИ ОТСТУПАМИ
+
+    # 2. Search Engine Discovery
     queries = [
         "site:t.me/s/ 'hysteria2://'",
         "site:t.me/s/ 'tuic://'",
         "site:github.com 'hysteria2://' extension:txt",
-        "site:github.com 'tuic://' extension:txt",
         "site:gist.github.com 'hysteria2://'",
-        "site:gist.github.com 'tuic://'",
         "site:pastebin.com 'hysteria2://'",
-        "site:pastebin.com 'tuic://'",
         "intitle:'index of' 'hysteria2.txt'",
-        "intitle:'index of' 'tuic.txt'",
-        "'hysteria2' 'proxy' filetype:txt",
-        "site:raw.githubusercontent.com 'tuic://'",
         "site:cdn.jsdelivr.net 'hysteria2://'"
     ]
     
     for q in queries:
-        logging.info(f"🔎 Поиск: {q}")
-        found.update(search("google", q))
+        logging.info(f"🔎 Поиск в поисковиках: {q}")
+        found = search("google", q)
+        for l in found:
+            if l not in db:
+                if is_valid(l): new_src.add(l)
         time.sleep(random.uniform(5, 10))
-        found.update(search("ddg", q))
-
-    new_src = set()
-    for l in found:
-        if l not in db and l not in checked:
-            if is_valid(l):
-                new_src.add(l)
-                logging.info(f"✅ НАЙДЕН: {l}")
-            else: checked.add(l)
 
     if new_src:
         final = sorted(list(db.union(new_src)))
         OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(OUTPUT_FILE, "w") as f: json.dump(final, f, indent=2)
-        logging.info(f"✨ Добавлено {len(new_src)} источников.")
-    else: logging.info("😴 Ничего нового.")
+        logging.info(f"✨ Добавлено {len(new_src)} новых источников.")
+    else:
+        logging.info("😴 Ничего нового.")
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    main()
