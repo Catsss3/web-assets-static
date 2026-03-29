@@ -15,6 +15,8 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 ]
+
+# Старые маркеры контента
 SOURCE_MARKERS = [
     r"hysteria2://",
     r"tuic://",
@@ -22,21 +24,32 @@ SOURCE_MARKERS = [
 ]
 COMPILED_MARKERS = [re.compile(m, re.IGNORECASE) for m in SOURCE_MARKERS]
 
+# НОВЫЕ маркеры для поиска ссылок-подписок (Subscription Links)
+SUB_MARKERS = [
+    r"/api/v1/client/subscribe\?token=",
+    r"/sub\?target=",
+    r"/subscribe\?token=",
+    r"/link/[a-zA-Z0-9]{10,}",
+]
+COMPILED_SUB_MARKERS = [re.compile(m, re.IGNORECASE) for m in SUB_MARKERS]
+
+# Твои старые запросы + НОВЫЕ для охоты на подписки
 GOOGLE_QUERIES = [
     "site:t.me/s/ 'hysteria2://'",
     "site:t.me/s/ 'tuic://'",
     "site:telegram.me/s/ 'hysteria2://'",
-    "site:telegram.me/s/ 'tuic://'",
     "site:cdn.jsdelivr.net 'hysteria2://'",
+    "intitle:'index of' 'sub' 'hysteria2'", # Новое
+    "site:pastebin.com 'hysteria2' 'subscribe?token='", # Новое
 ]
 DUCK_QUERIES = [
     "hysteria2:// telegram",
     "tuic:// telegram",
     "hysteria2:// site:t.me",
-    "tuic:// site:t.me",
+    "hysteria2 sub link site:github.com", # Новое
 ]
-REPO_QUERIES = ['hy2+extension:txt', 'tuic+extension:txt', 'sub+hysteria']
-GIST_QUERIES = ['hy2', 'tuic']
+REPO_QUERIES = ['hy2+extension:txt', 'tuic+extension:txt', 'sub+hysteria', 'subscribe+token+hy2']
+GIST_QUERIES = ['hy2', 'tuic', 'subscribe+proxy']
 
 # ---------- СЕССИЯ ----------
 session = requests.Session()
@@ -54,6 +67,10 @@ def clean_url(href: str) -> str:
     return href
 
 def is_valid(url: str) -> bool:
+    # Если в самом URL уже есть признаки подписки - это VALID
+    if any(p.search(url) for p in COMPILED_SUB_MARKERS):
+        return True
+    # Иначе проверяем контент (как раньше)
     try:
         r = session.get(url, headers=get_headers(), timeout=10, stream=True)
         chunk = r.raw.read(300 * 1024, decode_content=True).decode("utf-8", errors="ignore")
@@ -125,24 +142,32 @@ def main():
         with open(OUTPUT_FILE) as f:
             try: db = set(json.load(f))
             except: pass
+    
     new_src = set()
     token = os.getenv('GITHUB_TOKEN') or os.getenv('GithubApiToken')
+    
+    # 1. GitHub Search
     if token: new_src.update(discover_github(token))
+    
+    # 2. Google Search
     for q in GOOGLE_QUERIES:
         candidates = search_google(q) - db
         new_src.update(validate_batch(candidates))
         time.sleep(random.uniform(5, 10))
+    
+    # 3. DuckDuckGo Search
     for q in DUCK_QUERIES:
         candidates = search_duckduckgo(q) - db
         new_src.update(validate_batch(candidates))
         time.sleep(random.uniform(5, 10))
+    
     if new_src:
         merged = sorted(db | new_src)
         OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(OUTPUT_FILE, "w") as f: json.dump(merged, f, indent=2)
-        logging.info(f"✨ Добавлено {len(new_src)} новых источников.")
+        logging.info(f"✨ Стелла добавила {len(new_src)} новых источников (включая подписки).")
     else:
-        logging.info("😴 Новых источников не найдено.")
+        logging.info("😴 Новых элитных источников не найдено.")
 
 if __name__ == "__main__":
     main()
